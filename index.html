@@ -1,0 +1,295 @@
+# index.html
+
+```html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>원자재 가격 모니터링 대시보드</title>
+
+<script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+body {
+    margin: 0;
+    background: #f5f7fb;
+    font-family: 'Pretendard', sans-serif;
+    color: #1f2937;
+    padding: 32px;
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 36px;
+}
+
+.header h1 {
+    font-size: 44px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.header p {
+    font-size: 20px;
+    color: #6b7280;
+}
+
+.dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.chart-card {
+    background: white;
+    border-radius: 24px;
+    padding: 28px;
+    box-shadow: 0 10px 30px rgba(15,23,42,0.06);
+}
+
+.chart-title {
+    text-align: center;
+    font-size: 30px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #374151;
+}
+
+.chart {
+    width: 100%;
+    height: 420px;
+}
+
+.footer {
+    margin-top: 32px;
+    text-align: center;
+    font-size: 16px;
+    color: #6b7280;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>🌾 식품 원자재 가격 추이 (2020~현재)</h1>
+    <p>FRED API 기반 원자재 가격 자동 모니터링 시스템</p>
+</div>
+
+<div class="dashboard">
+
+    <div class="chart-card">
+        <div class="chart-title">대두</div>
+        <div id="soyChart" class="chart"></div>
+    </div>
+
+    <div class="chart-card">
+        <div class="chart-title">밀</div>
+        <div id="wheatChart" class="chart"></div>
+    </div>
+
+    <div class="chart-card">
+        <div class="chart-title">설탕</div>
+        <div id="sugarChart" class="chart"></div>
+    </div>
+
+    <div class="chart-card">
+        <div class="chart-title">쌀</div>
+        <div id="riceChart" class="chart"></div>
+    </div>
+
+    <div class="chart-card">
+        <div class="chart-title">옥수수</div>
+        <div id="cornChart" class="chart"></div>
+    </div>
+
+</div>
+
+<div class="footer">
+    Python · FRED API · Plotly Dashboard
+</div>
+
+<script>
+const labels = [
+'2020-01','2020-03','2020-06','2020-09',
+'2021-01','2021-03','2021-06','2021-09',
+'2022-01','2022-03','2022-06','2022-09',
+'2023-01','2023-03','2023-06','2023-09',
+'2024-01','2024-03','2024-06','2024-09',
+'2025-01','2025-03','2025-06','2025-09','2026-01'
+];
+
+function movingAverage(data, period) {
+    return data.map((_, idx, arr) => {
+        if(idx < period - 1) return null;
+
+        const subset = arr.slice(idx - period + 1, idx + 1);
+        return subset.reduce((a,b)=>a+b,0) / period;
+    });
+}
+
+function createChart(id, title, values) {
+
+    const ma3 = movingAverage(values, 3);
+    const ma6 = movingAverage(values, 6);
+
+    const lineColors = [];
+
+    for(let i=0; i<values.length-1; i++) {
+        lineColors.push(values[i+1] >= values[i] ? '#e74c3c' : '#3498db');
+    }
+
+    const segments = [];
+
+    for(let i=0; i<values.length-1; i++) {
+        segments.push({
+            x: [labels[i], labels[i+1]],
+            y: [values[i], values[i+1]],
+            type: 'scatter',
+            mode: 'lines+markers',
+            line: {
+                color: lineColors[i],
+                width: 3
+            },
+            marker: {
+                color: lineColors[i],
+                size: 5
+            },
+            hoverinfo: 'skip',
+            showlegend: false
+        });
+    }
+
+    const mainTrace = {
+        x: labels,
+        y: values,
+        type: 'scatter',
+        mode: 'markers',
+        marker: {
+            size: 0,
+            color: '#111827'
+        },
+        hovertemplate:
+            '<b>' + title + '</b><br>' +
+            '날짜: %{x}<br>' +
+            '가격: %{y:.2f} USD<br>' +
+            '전월대비: %{customdata:.2f}%<extra></extra>',
+        customdata: values.map((v,i)=>{
+            if(i===0) return 0;
+            return ((v-values[i-1])/values[i-1]*100);
+        }),
+        showlegend: false
+    };
+
+    const ma3Trace = {
+        x: labels,
+        y: ma3,
+        type: 'scatter',
+        mode: 'lines',
+        name: '3개월 평균',
+        line: {
+            color: '#22c55e',
+            width: 2,
+            dash: 'dot'
+        }
+    };
+
+    const ma6Trace = {
+        x: labels,
+        y: ma6,
+        type: 'scatter',
+        mode: 'lines',
+        name: '6개월 평균',
+        line: {
+            color: '#f59e0b',
+            width: 2,
+            dash: 'dot'
+        }
+    };
+
+    const latest = values[values.length-1];
+    const prev = values[values.length-2];
+    const change = ((latest-prev)/prev*100).toFixed(2);
+
+    const layout = {
+        paper_bgcolor: 'white',
+        plot_bgcolor: 'white',
+        margin: {
+            l: 70,
+            r: 110,
+            t: 20,
+            b: 60
+        },
+        hovermode: 'x unified',
+        xaxis: {
+            showgrid: true,
+            gridcolor: '#e5e7eb',
+            tickfont: {
+                size: 14
+            }
+        },
+        yaxis: {
+            title: {
+                text: '가격 (USD)',
+                font: {
+                    size: 20
+                }
+            },
+            showgrid: true,
+            gridcolor: '#e5e7eb',
+            tickfont: {
+                size: 14
+            }
+        },
+        legend: {
+            x: 1.02,
+            y: 1,
+            font: {
+                size: 15
+            }
+        },
+        annotations: [
+            {
+                x: labels[labels.length-1],
+                y: latest,
+                xanchor: 'left',
+                yanchor: 'middle',
+                text:
+                    '<b>' + latest.toFixed(2) + ' USD</b><br>' +
+                    '<b>' + (change >=0 ? '+' : '') + change + '%</b>',
+                showarrow: false,
+                bgcolor: '#e74c3c',
+                bordercolor: '#e74c3c',
+                font: {
+                    color: 'white',
+                    size: 15
+                },
+                borderpad: 8
+            }
+        ]
+    };
+
+    Plotly.newPlot(
+        id,
+        [...segments, ma3Trace, ma6Trace, mainTrace],
+        layout,
+        {
+            responsive: true,
+            displaylogo: false
+        }
+    );
+}
+
+createChart('soyChart','대두',[340,320,310,330,500,540,520,450,480,610,620,510,560,540,550,470,430,440,360,370,380,390,380,370,426]);
+createChart('wheatChart','밀',[180,175,172,176,220,240,260,280,330,440,320,350,320,310,280,220,225,210,230,180,190,175,165,170,193]);
+createChart('sugarChart','설탕',[14,10,12,13,15,17,19,20,18,20,19,18,20,25,24,27,23,19,20,22,19,20,17,15,14.8]);
+createChart('riceChart','쌀',[450,520,480,490,530,470,460,430,470,610,560,640,590,610,560,500,490,460,420,430,440,470,490,510,530]);
+createChart('cornChart','옥수수',[150,140,145,160,200,240,260,250,310,390,360,340,320,300,280,240,220,210,200,190,185,180,175,178,182]);
+</script>
+
+</body>
+</html>
+```
